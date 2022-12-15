@@ -25,6 +25,8 @@ import io.trino.spi.type.Type;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Collections;
+import java.util.ArrayList;
 
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_MODIFIED_TIME;
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_PATH;
@@ -128,6 +130,20 @@ public class IcebergColumnHandle
     public List<Integer> getPath()
     {
         return path;
+    }
+
+    @JsonIgnore
+    public List<String> getPathOfName() {
+        List<String> names = new ArrayList<>();
+
+        names.add(getName());
+        IcebergColumnHandle handle = this;
+        while (!handle.isBaseColumn()) {
+            handle = handle.getBaseColumn();
+            names.add(handle.getName());
+        }
+        Collections.reverse(names);
+        return names;
     }
 
     /**

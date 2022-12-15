@@ -1355,7 +1355,8 @@ public class IcebergPageSourceProvider
             String baseType = columnHandle.getType().getTypeSignature().getBase();
             // skip looking up predicates for complex types as Parquet only stores stats for primitives
             if (!baseType.equals(StandardTypes.MAP) && !baseType.equals(StandardTypes.ARRAY) && !baseType.equals(StandardTypes.ROW)) {
-                ColumnDescriptor descriptor = descriptorsByPath.get(ImmutableList.of(columnHandle.getName()));
+                ImmutableList<String> path = ImmutableList.copyOf(columnHandle.getPathOfName());
+                ColumnDescriptor descriptor = descriptorsByPath.get(path);
                 if (descriptor != null) {
                     predicate.put(descriptor, domain);
                 }

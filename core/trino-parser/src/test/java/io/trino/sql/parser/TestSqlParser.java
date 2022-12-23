@@ -160,6 +160,7 @@ import io.trino.sql.tree.Row;
 import io.trino.sql.tree.SearchedCaseExpression;
 import io.trino.sql.tree.Select;
 import io.trino.sql.tree.SelectItem;
+import io.trino.sql.tree.SetColumnType;
 import io.trino.sql.tree.SetPath;
 import io.trino.sql.tree.SetProperties;
 import io.trino.sql.tree.SetRole;
@@ -2149,6 +2150,30 @@ public class TestSqlParser
     }
 
     @Test
+    public void testAlterColumnSetDataType()
+    {
+        assertThat(statement("ALTER TABLE foo.t ALTER COLUMN a SET DATA TYPE bigint"))
+                .isEqualTo(new SetColumnType(
+                        location(1, 1),
+                        QualifiedName.of(ImmutableList.of(
+                                new Identifier(location(1, 13), "foo", false),
+                                new Identifier(location(1, 17), "t", false))),
+                        new Identifier(location(1, 32), "a", false),
+                        simpleType(location(1, 48), "bigint"),
+                        false));
+
+        assertThat(statement("ALTER TABLE IF EXISTS foo.t ALTER COLUMN b SET DATA TYPE double"))
+                .isEqualTo(new SetColumnType(
+                        location(1, 1),
+                        QualifiedName.of(ImmutableList.of(
+                                new Identifier(location(1, 23), "foo", false),
+                                new Identifier(location(1, 27), "t", false))),
+                        new Identifier(location(1, 42), "b", false),
+                        simpleType(location(1, 58), "double"),
+                        true));
+    }
+
+    @Test
     public void testAlterTableSetAuthorization()
     {
         assertStatement(
@@ -3425,6 +3450,7 @@ public class TestSqlParser
                                 Optional.empty()),
                         false,
                         false,
+                        Optional.empty(),
                         ImmutableList.of(),
                         Optional.empty()));
 
@@ -3464,8 +3490,42 @@ public class TestSqlParser
                                 Optional.empty()),
                         true,
                         false,
+                        Optional.empty(),
                         ImmutableList.of(),
                         Optional.of("A simple materialized view")));
+
+        // GRACE PERIOD
+        assertThat(statement("CREATE MATERIALIZED VIEW a GRACE PERIOD INTERVAL '2' DAY AS SELECT * FROM t"))
+                .isEqualTo(new CreateMaterializedView(
+                        Optional.of(new NodeLocation(1, 1)),
+                        QualifiedName.of(ImmutableList.of(new Identifier(new NodeLocation(1, 26), "a", false))),
+                        new Query(
+                                new NodeLocation(1, 61),
+                                Optional.empty(),
+                                new QuerySpecification(
+                                        new NodeLocation(1, 61),
+                                        new Select(
+                                                new NodeLocation(1, 61),
+                                                false,
+                                                ImmutableList.of(new AllColumns(new NodeLocation(1, 68), Optional.empty(), ImmutableList.of()))),
+                                        Optional.of(new Table(
+                                                new NodeLocation(1, 75),
+                                                QualifiedName.of(ImmutableList.of(new Identifier(new NodeLocation(1, 75), "t", false))))),
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        ImmutableList.of(),
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        Optional.empty()),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty()),
+                        false,
+                        false,
+                        Optional.of(new IntervalLiteral(new NodeLocation(1, 41), "2", Sign.POSITIVE, IntervalField.DAY, Optional.empty())),
+                        ImmutableList.of(),
+                        Optional.empty()));
 
         // OR REPLACE, COMMENT, WITH properties
         assertThat(statement("CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.matview COMMENT 'A simple materialized view'" +
@@ -3504,6 +3564,7 @@ public class TestSqlParser
                                 Optional.empty()),
                         true,
                         false,
+                        Optional.empty(),
                         ImmutableList.of(new Property(
                                 new NodeLocation(1, 102),
                                 new Identifier(new NodeLocation(1, 102), "partitioned_by", false),
@@ -3590,6 +3651,7 @@ public class TestSqlParser
                                 Optional.empty()),
                         true,
                         false,
+                        Optional.empty(),
                         ImmutableList.of(new Property(
                                 new NodeLocation(1, 108),
                                 new Identifier(new NodeLocation(1, 108), "partitioned_by", false),

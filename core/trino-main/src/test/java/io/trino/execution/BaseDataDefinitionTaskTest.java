@@ -17,7 +17,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.trino.Session;
 import io.trino.client.NodeVersion;
-import io.trino.connector.CatalogHandle;
 import io.trino.connector.CatalogServiceProvider;
 import io.trino.connector.MockConnectorFactory;
 import io.trino.execution.warnings.WarningCollector;
@@ -35,6 +34,7 @@ import io.trino.metadata.ViewDefinition;
 import io.trino.security.AccessControl;
 import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.TrinoException;
+import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.CatalogSchemaName;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ColumnMetadata;
@@ -313,6 +313,25 @@ public abstract class BaseDataDefinitionTaskTest
             SchemaTableName oldTableName = getTableName(tableHandle);
             tables.put(newTableName.asSchemaTableName(), verifyNotNull(tables.get(oldTableName), "Table not found %s", oldTableName));
             tables.remove(oldTableName);
+        }
+
+        @Override
+        public void setColumnType(Session session, TableHandle tableHandle, ColumnHandle columnHandle, Type type)
+        {
+            SchemaTableName tableName = getTableName(tableHandle);
+            ConnectorTableMetadata metadata = tables.get(tableName);
+
+            ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builderWithExpectedSize(metadata.getColumns().size());
+            for (ColumnMetadata column : metadata.getColumns()) {
+                if (column.getName().equals(((TestingColumnHandle) columnHandle).getName())) {
+                    columns.add(new ColumnMetadata(column.getName(), type));
+                }
+                else {
+                    columns.add(column);
+                }
+            }
+
+            tables.put(tableName, new ConnectorTableMetadata(tableName, columns.build()));
         }
 
         private ConnectorTableMetadata getTableMetadata(TableHandle tableHandle)

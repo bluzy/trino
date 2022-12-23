@@ -141,7 +141,7 @@ public abstract class BaseIcebergConnectorTest
 {
     private static final Pattern WITH_CLAUSE_EXTRACTOR = Pattern.compile(".*(WITH\\s*\\([^)]*\\))\\s*$", Pattern.DOTALL);
 
-    private final IcebergFileFormat format;
+    protected final IcebergFileFormat format;
 
     protected BaseIcebergConnectorTest(IcebergFileFormat format)
     {
@@ -3121,8 +3121,8 @@ public abstract class BaseIcebergConnectorTest
     {
         Session defaultSession = getSession();
         String catalog = defaultSession.getCatalog().orElseThrow();
-        Session extendedStatisticsEnabled = Session.builder(defaultSession)
-                .setCatalogSessionProperty(catalog, EXTENDED_STATISTICS_ENABLED, "true")
+        Session extendedStatisticsDisabled = Session.builder(defaultSession)
+                .setCatalogSessionProperty(catalog, EXTENDED_STATISTICS_ENABLED, "false")
                 .build();
         String tableName = "test_basic_analyze";
 
@@ -3154,22 +3154,22 @@ public abstract class BaseIcebergConnectorTest
 
         // initially, no NDV information
         assertThat(query(defaultSession, "SHOW STATS FOR " + tableName)).skippingTypesCheck().matches(statsWithoutNdv);
-        assertThat(query(extendedStatisticsEnabled, "SHOW STATS FOR " + tableName)).skippingTypesCheck().matches(statsWithoutNdv);
+        assertThat(query(extendedStatisticsDisabled, "SHOW STATS FOR " + tableName)).skippingTypesCheck().matches(statsWithoutNdv);
 
-        // ANALYZE needs to be enabled. This is because it currently stores additional statistics in a Trino-specific format and the format will change.
+        // ANALYZE can be disabled.
         assertQueryFails(
-                defaultSession,
+                extendedStatisticsDisabled,
                 "ANALYZE " + tableName,
-                "\\QAnalyze is not enabled. You can enable analyze using iceberg.experimental.extended-statistics.enabled config or experimental_extended_statistics_enabled catalog session property");
+                "\\QAnalyze is not enabled. You can enable analyze using iceberg.extended-statistics.enabled config or extended_statistics_enabled catalog session property");
 
         // ANALYZE the table
-        assertUpdate(extendedStatisticsEnabled, "ANALYZE " + tableName);
+        assertUpdate(defaultSession, "ANALYZE " + tableName);
         // After ANALYZE, NDV information present
-        assertThat(query(extendedStatisticsEnabled, "SHOW STATS FOR " + tableName))
+        assertThat(query(defaultSession, "SHOW STATS FOR " + tableName))
                 .skippingTypesCheck()
                 .matches(statsWithNdv);
-        // NDV information is not present in a session with extended statistics not enabled
-        assertThat(query(defaultSession, "SHOW STATS FOR " + tableName))
+        // NDV information is not present in a session with extended statistics disabled
+        assertThat(query(extendedStatisticsDisabled, "SHOW STATS FOR " + tableName))
                 .skippingTypesCheck()
                 .matches(statsWithoutNdv);
 
@@ -4299,9 +4299,17 @@ public abstract class BaseIcebergConnectorTest
     public void testGetIcebergTableProperties()
     {
         assertUpdate("CREATE TABLE test_iceberg_get_table_props (x BIGINT)");
-        assertThat(query("SELECT * FROM \"test_iceberg_get_table_props$properties\""))
-                .matches(format("VALUES (VARCHAR 'write.format.default', VARCHAR '%s')", format.name()));
+        verifyIcebergTableProperties(computeActual("SELECT * FROM \"test_iceberg_get_table_props$properties\""));
         dropTable("test_iceberg_get_table_props");
+    }
+
+    protected void verifyIcebergTableProperties(MaterializedResult actual)
+    {
+        assertThat(actual).isNotNull();
+        MaterializedResult expected = resultBuilder(getSession())
+                .row("write.format.default", format.name())
+                .build();
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     protected abstract boolean supportsIcebergFileStatistics(String typeName);
@@ -6143,9 +6151,7 @@ public abstract class BaseIcebergConnectorTest
 
         String baseTableName = "test_rename_target_" + randomNameSuffix();
 
-        int maxLength = 255;
-
-        String validTargetTableName = baseTableName + "z".repeat(maxLength - baseTableName.length());
+        String validTargetTableName = baseTableName + "z".repeat(maxTableRenameLength() - baseTableName.length());
         assertUpdate("ALTER TABLE " + sourceTableName + " RENAME TO " + validTargetTableName);
         assertTrue(getQueryRunner().tableExists(getSession(), validTargetTableName));
         assertQuery("SELECT x FROM " + validTargetTableName, "VALUES 123");
@@ -6156,6 +6162,11 @@ public abstract class BaseIcebergConnectorTest
         assertThatThrownBy(() -> assertUpdate("ALTER TABLE " + sourceTableName + " RENAME TO " + invalidTargetTableName))
                 .satisfies(this::verifyTableNameLengthFailurePermissible);
         assertFalse(getQueryRunner().tableExists(getSession(), invalidTargetTableName));
+    }
+
+    protected int maxTableRenameLength()
+    {
+        return 255;
     }
 
     @Override
